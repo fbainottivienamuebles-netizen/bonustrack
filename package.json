@@ -1,0 +1,15 @@
+{
+  "name": "letras-en-vivo",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev:panel": "npm run dev -w panel",
+    "dev:mobile": "npm run dev -w mobile",
+    "build:panel": "npm run build -w panel",
+    "build:mobile": "npm run build -w mobile",
+    "typecheck": "npm run typecheck -w @letras/shared && npm run typecheck -w panel && npm run typecheck -w mobile"
+  }
+}

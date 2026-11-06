@@ -1,0 +1,93 @@
+// Modelo de datos del panel (spec, sección 6).
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum SectionType {
+  intro
+  verso
+  preestribillo
+  estribillo
+  puente
+  solo
+  outro
+}
+
+enum TempoSource {
+  manual
+  detectadoEnVivo
+}
+
+model Song {
+  id                 String      @id @default(uuid())
+  titulo             String
+  artistaOriginal    String
+  duracionSegundos   Int
+  bpmManual          Int?
+  fuenteTempo        TempoSource @default(manual)
+  videoUrl           String?
+  videoBpmReferencia Int?
+  secciones          Section[]
+  tandaSongs         TandaSong[]
+  createdAt          DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
+}
+
+model Section {
+  id     String      @id @default(uuid())
+  songId String
+  song   Song        @relation(fields: [songId], references: [id], onDelete: Cascade)
+  orden  Int
+  tipo   SectionType
+  lineas Line[]
+
+  @@index([songId, orden])
+}
+
+model Line {
+  id             String  @id @default(uuid())
+  sectionId      String
+  section        Section @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  orden          Int
+  texto          String
+  tiempoInicioMs Int
+
+  @@index([sectionId, orden])
+}
+
+model Setlist {
+  id        String   @id @default(uuid())
+  nombre    String
+  tandas    Tanda[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Tanda {
+  id        String      @id @default(uuid())
+  setlistId String
+  setlist   Setlist     @relation(fields: [setlistId], references: [id], onDelete: Cascade)
+  orden     Int
+  nombre    String
+  temas     TandaSong[]
+
+  @@index([setlistId, orden])
+}
+
+// Un tema puede borrarse sólo si no está en ningún setlist (Restrict).
+model TandaSong {
+  id      String @id @default(uuid())
+  tandaId String
+  tanda   Tanda  @relation(fields: [tandaId], references: [id], onDelete: Cascade)
+  songId  String
+  song    Song   @relation(fields: [songId], references: [id], onDelete: Restrict)
+  orden   Int
+
+  @@index([tandaId, orden])
+}
