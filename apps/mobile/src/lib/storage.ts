@@ -20,7 +20,7 @@ export function loadSettings(): Settings {
   } catch {
     /* sin storage: valores por defecto */
   }
-  return { serverUrl: import.meta.env.DEV ? "http://localhost:3000" : "", password: "" };
+  return { serverUrl: import.meta.env.DEV ? "http://localhost:3000" : "https://bonustrack-panel.vercel.app", password: "" };
 }
 
 export function saveSettings(s: Settings) {

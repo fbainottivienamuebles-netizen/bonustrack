@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Letras en vivo</string>
+    <string name="title_activity_main">Letras en vivo</string>
+    <string name="package_name">com.bonustrack.letras</string>
+    <string name="custom_url_scheme">com.bonustrack.letras</string>
+</resources>
