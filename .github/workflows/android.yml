@@ -65,10 +65,10 @@ jobs:
           VERSION_CODE: ${{ github.run_number }}
         run: |
           chmod +x gradlew
-          if ! ./gradlew assembleRelease --no-daemon --console=plain > "$RUNNER_TEMP/gradle.log" 2>&1; then
+          if ! ./gradlew assembleRelease --no-daemon --console=plain --stacktrace > "$RUNNER_TEMP/gradle.log" 2>&1; then
             tail -60 "$RUNNER_TEMP/gradle.log"
             # Publica el motivo como anotación (visible en el resumen del build).
-            MSG=$(sed -n '/What went wrong/,/Try:/p' "$RUNNER_TEMP/gradle.log" | head -15 | tr '\n' ' ')
+            MSG=$( (sed -n '/What went wrong/,/Try:/p' "$RUNNER_TEMP/gradle.log" | head -8; grep -E "line: [0-9]+|Caused by|build\.gradle" "$RUNNER_TEMP/gradle.log" | head -10) | tr '\n' ' ')
             echo "::error title=Gradle::${MSG:-$(tail -5 "$RUNNER_TEMP/gradle.log" | tr '\n' ' ')}"
             exit 1
           fi
