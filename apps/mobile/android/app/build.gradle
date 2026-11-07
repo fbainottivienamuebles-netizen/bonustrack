@@ -8,8 +8,8 @@ android {
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         // En CI se usa el número de build, así cada APK nuevo instala encima del anterior.
-        versionCode (System.getenv("VERSION_CODE") ?: "1").toInteger()
-        versionName "1.0." + (System.getenv("VERSION_CODE") ?: "0")
+        versionCode = Integer.parseInt(System.getenv("VERSION_CODE") ?: "1")
+        versionName = "1.0." + (System.getenv("VERSION_CODE") ?: "0")
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -24,17 +24,17 @@ android {
     signingConfigs {
         if (keystorePath) {
             fija {
-                storeFile file(keystorePath)
-                storeType "pkcs12"
-                storePassword System.getenv("ANDROID_KEYSTORE_PASSWORD")
-                keyAlias "letras"
-                keyPassword System.getenv("ANDROID_KEYSTORE_PASSWORD")
+                storeFile = file(keystorePath)
+                storeType = "pkcs12"
+                storePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
+                keyAlias = "letras"
+                keyPassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
             }
         }
     }
     buildTypes {
         release {
-            if (keystorePath) signingConfig signingConfigs.fija
+            if (keystorePath) signingConfig = signingConfigs.fija
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
