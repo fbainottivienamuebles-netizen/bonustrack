@@ -43,11 +43,19 @@ jobs:
       - name: Preparar clave de firma
         env:
           KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PW: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
         run: |
           if [ -z "$KEYSTORE_B64" ]; then
-            echo "::error::Falta el secret ANDROID_KEYSTORE_BASE64 (ver README)"; exit 1
+            echo "::error::Falta el secret ANDROID_KEYSTORE_BASE64"; exit 1
+          fi
+          if [ -z "$KEYSTORE_PW" ]; then
+            echo "::error::Falta el secret ANDROID_KEYSTORE_PASSWORD"; exit 1
           fi
           echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/letras.p12"
+          # Verifica que la contraseña abra la clave (keytool viene con el JDK).
+          if ! keytool -list -keystore "$RUNNER_TEMP/letras.p12" -storetype pkcs12 -storepass "$KEYSTORE_PW" > /dev/null 2>&1; then
+            echo "::error::La contraseña (ANDROID_KEYSTORE_PASSWORD) no abre la clave (ANDROID_KEYSTORE_BASE64)"; exit 1
+          fi
 
       - name: Compilar APK
         working-directory: apps/mobile/android
