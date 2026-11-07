@@ -185,8 +185,13 @@ export function TimingTool({ song }: { song: Song }) {
   });
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      const tag = (e.target as HTMLElement)?.tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      // Ignorar sólo mientras se escribe texto; en el resto (archivo, barra de
+      // posición, velocidad, botones) los atajos tienen que funcionar igual.
+      const el = e.target as HTMLElement | null;
+      const typing =
+        el?.tagName === "TEXTAREA" ||
+        (el?.tagName === "INPUT" && ["text", "number", "search", "url", "email", "password"].includes((el as HTMLInputElement).type));
+      if (typing || e.ctrlKey || e.metaKey || e.altKey) return;
       const k = keys.current;
       if (e.code === "Space") k.mark();
       else if (e.key === "Enter") k.togglePlay();
@@ -228,6 +233,7 @@ export function TimingTool({ song }: { song: Song }) {
                   setSrc(URL.createObjectURL(f));
                   setPlaying(false);
                   setPosMs(0);
+                  e.target.blur();
                 }}
               />
             </label>
