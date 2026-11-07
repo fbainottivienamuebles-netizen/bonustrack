@@ -8,7 +8,9 @@ export default defineConfig({
     seed: "node --experimental-strip-types prisma/seed.ts",
   },
   datasource: {
-    url: process.env["DATABASE_URL"],
+    // Sólo lo usa la CLI (migraciones): en Neon conviene la conexión directa,
+    // no la del pooler. La app en runtime usa DATABASE_URL (ver src/lib/db.ts).
+    url: process.env["DATABASE_URL_UNPOOLED"] ?? process.env["DATABASE_URL"],
     shadowDatabaseUrl: process.env["SHADOW_DATABASE_URL"],
   },
 });
