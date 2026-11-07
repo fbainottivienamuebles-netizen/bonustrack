@@ -14,6 +14,7 @@ import { requireSession } from "@/lib/session";
 import {
   deleteSetlist,
   deleteSong,
+  getSong,
   saveSetlist,
   saveSong,
   type SetlistInput,
@@ -80,7 +81,7 @@ export async function saveSongAction(_: FormState, form: FormData): Promise<Form
   if (!artistaOriginal) return { error: "Falta el artista original" };
   if (!duracionSegundos) return { error: "Duración inválida (usá mm:ss)" };
   if (bpmManual === "error") return { error: "BPM inválido (30–300)" };
-  if (videoBpmReferencia === "error") return { error: "BPM del video inválido (30–300)" };
+  if (videoBpmReferencia === "error") return { error: "BPM de la grabación inválido (30–300)" };
   if (videoUrl && !/^https?:\/\//i.test(videoUrl)) return { error: "La URL del video debe empezar con http(s)://" };
 
   const { secciones, errores } = parseLyrics(String(form.get("letra") ?? ""), duracionSegundos);
@@ -148,4 +149,56 @@ export async function deleteSetlistAction(form: FormData) {
   revalidatePath("/setlists");
   revalidatePath("/temas");
   redirect("/setlists");
+}
+
+// ---------- Tiempos (marcados con la grabación) ----------
+
+export interface SaveTimesResult {
+  ok?: boolean;
+  error?: string;
+}
+
+/**
+ * Guarda los tiempos de todas las líneas (en orden, lista aplanada) y,
+ * opcionalmente, la duración tomada de la grabación.
+ */
+export async function saveTimesAction(
+  songId: string,
+  tiempos: number[],
+  duracionSegundos: number | null,
+): Promise<SaveTimesResult> {
+  await requireSession();
+  const song = await getSong(songId);
+  if (!song) return { error: "El tema ya no existe" };
+
+  const total = song.secciones.reduce((n, s) => n + s.lineas.length, 0);
+  if (!Array.isArray(tiempos) || tiempos.length !== total)
+    return { error: "La letra cambió mientras marcabas. Recargá la página." };
+  if (tiempos.some((t) => !Number.isFinite(t) || t < 0))
+    return { error: "Hay tiempos inválidos" };
+  for (let i = 1; i < tiempos.length; i++)
+    if (tiempos[i] < tiempos[i - 1]) return { error: `La línea ${i + 1} quedó antes que la anterior` };
+
+  let k = 0;
+  const secciones = song.secciones.map((s) => ({
+    tipo: s.tipo,
+    lineas: s.lineas.map((l) => ({ texto: l.texto, tiempoInicioMs: Math.round(tiempos[k++]) })),
+  }));
+  const dur =
+    duracionSegundos && Number.isInteger(duracionSegundos) && duracionSegundos > 0
+      ? duracionSegundos
+      : song.duracionSegundos;
+
+  await saveSong(songId, {
+    titulo: song.titulo,
+    artistaOriginal: song.artistaOriginal,
+    duracionSegundos: dur,
+    bpmManual: song.bpmManual,
+    videoUrl: song.videoUrl,
+    videoBpmReferencia: song.videoBpmReferencia,
+    secciones,
+  });
+  revalidatePath("/temas");
+  revalidatePath(`/temas/${songId}`);
+  return { ok: true };
 }

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getSong } from "@/lib/data";
 import { SongEditor } from "../song-editor";
@@ -11,7 +12,12 @@ export default async function EditSongPage({ params }: PageProps<"/temas/[id]">)
     <>
       <div className="mb-4 flex items-center justify-between gap-4">
         <h1 className="truncate text-xl font-semibold">{song.titulo}</h1>
-        <DeleteSongButton id={song.id} />
+        <div className="flex items-center gap-2">
+          <Link href={`/temas/${song.id}/tiempos`} className="btn-primary">
+            ♪ Marcar tiempos con la grabación
+          </Link>
+          <DeleteSongButton id={song.id} />
+        </div>
       </div>
       <SongEditor song={song} />
     </>

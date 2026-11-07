@@ -81,7 +81,7 @@ export function SongEditor({ song }: { song: Song | null }) {
           />
         </div>
         <div className="sm:col-span-2">
-          <label className="label" htmlFor="videoBpmReferencia">BPM del video de referencia</label>
+          <label className="label" htmlFor="videoBpmReferencia">BPM de la grabación</label>
           <input
             id="videoBpmReferencia"
             name="videoBpmReferencia"
@@ -93,7 +93,7 @@ export function SongEditor({ song }: { song: Song | null }) {
           />
         </div>
         <div className="sm:col-span-6">
-          <label className="label" htmlFor="videoUrl">Video de referencia (URL)</label>
+          <label className="label" htmlFor="videoUrl">Video de referencia (URL, opcional)</label>
           <input
             id="videoUrl"
             name="videoUrl"
