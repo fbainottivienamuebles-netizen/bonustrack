@@ -18,14 +18,14 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 24
           cache: npm
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: 21
@@ -57,7 +57,13 @@ jobs:
           VERSION_CODE: ${{ github.run_number }}
         run: |
           chmod +x gradlew
-          ./gradlew assembleRelease --no-daemon
+          if ! ./gradlew assembleRelease --no-daemon --console=plain > "$RUNNER_TEMP/gradle.log" 2>&1; then
+            tail -60 "$RUNNER_TEMP/gradle.log"
+            # Publica el motivo como anotación (visible en el resumen del build).
+            MSG=$(sed -n '/What went wrong/,/Try:/p' "$RUNNER_TEMP/gradle.log" | head -15 | tr '\n' ' ')
+            echo "::error title=Gradle::${MSG:-$(tail -5 "$RUNNER_TEMP/gradle.log" | tr '\n' ' ')}"
+            exit 1
+          fi
           cp app/build/outputs/apk/release/app-release.apk "$RUNNER_TEMP/letras-en-vivo.apk"
 
       - name: Publicar en Releases
