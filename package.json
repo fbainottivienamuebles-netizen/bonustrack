@@ -6,6 +6,7 @@
     "apps/*"
   ],
   "scripts": {
+    "director": "npm run build:web -w mobile && npm run start -w director",
     "dev:panel": "npm run dev -w panel",
     "dev:mobile": "npm run dev -w mobile",
     "build:panel": "npm run build -w panel",

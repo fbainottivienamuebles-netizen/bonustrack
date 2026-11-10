@@ -119,3 +119,39 @@ ul, ol { list-style: none; margin: 0; padding: 0; }
 .song-item.current { background: var(--card); color: var(--active); }
 .song-item .num { width: 1.5rem; color: var(--muted); text-align: right; }
 .song-list { margin-bottom: 1rem; }
+
+.btn.big { min-height: 60px; font-size: 1.15rem; margin-bottom: .5rem; }
+
+/* ---------- Sala WiFi ---------- */
+.room-badge { font-size: .75rem; padding: .15rem .55rem; border-radius: 99px; white-space: nowrap; max-width: 45vw; overflow: hidden; text-overflow: ellipsis; }
+.room-badge.ok { background: #12301f; color: #86efac; }
+.room-badge.bad { background: #3a2c06; color: var(--warn); }
+.room { margin: .5rem 0 1rem; }
+.room-join { display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; }
+.room-join p { margin: .3rem 0; }
+.qr { width: 160px; height: 160px; background: #fff; border-radius: 8px; padding: 6px; flex: none; }
+.join-url { font-size: 1.4rem; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--active); }
+.peers { margin: .3rem 0 1rem; font-size: .9rem; }
+.peers li { padding: .15rem 0; }
+.resume {
+  position: absolute; left: 12px; right: 12px; bottom: 150px; z-index: 5;
+  display: flex; gap: .5rem; align-items: center; flex-wrap: wrap;
+  background: #1b1630; border: 1px solid var(--accent); border-radius: 12px; padding: .7rem .9rem;
+}
+.show { position: relative; }
+
+/* ---------- Seguidor / escenario ---------- */
+.line { font-size: calc(clamp(1.4rem, 5.5vw, 2.6rem) * var(--lyric-scale, 1)); }
+.line.static { cursor: default; }
+.next-up.static { cursor: default; text-align: center; }
+.follow-bar {
+  border-top: 1px solid var(--border); padding: 8px 12px calc(8px + env(safe-area-inset-bottom));
+  display: flex; flex-wrap: wrap; gap: .5rem 1rem; align-items: center; justify-content: space-between;
+}
+.follow-bar .group { display: flex; align-items: center; gap: .4rem; flex-wrap: wrap; }
+.follow-bar .lead { min-width: 3.6rem; text-align: center; font-variant-numeric: tabular-nums; }
+.stage .line { font-size: calc(clamp(1.6rem, 4.2vw, 4rem) * var(--lyric-scale, 1)); }
+.stage .line.active { transform: none; }
+.stage .show-head .title { font-size: 1.6rem; }
+.stage.idle { cursor: none; }
+.stage .lyrics { padding: 0 4vw; }

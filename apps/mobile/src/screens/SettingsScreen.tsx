@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { ApiError, testConnection } from "../lib/api";
 import type { Settings } from "../lib/storage";
+import { deviceName, setDeviceName } from "../lib/device";
 
 export function SettingsScreen({
   settings,
@@ -14,6 +15,7 @@ export function SettingsScreen({
   const [draft, setDraft] = useState(settings);
   const [status, setStatus] = useState<{ error?: boolean; text: string } | null>(null);
   const [testing, setTesting] = useState(false);
+  const [name, setName] = useState(deviceName);
 
   async function test() {
     setTesting(true);
@@ -56,13 +58,21 @@ export function SettingsScreen({
         />
       </label>
 
+      <label className="field">
+        <span>Nombre de este equipo (lo ve el director en la sala)</span>
+        <input value={name} maxLength={40} onChange={(e) => setName(e.target.value)} placeholder="Celu de Ana" />
+      </label>
+
       {status && <p className={`msg ${status.error ? "error" : ""}`}>{status.text}</p>}
 
       <div className="row">
         <button className="btn" disabled={testing} onClick={test}>
           {testing ? "Probando…" : "Probar conexión"}
         </button>
-        <button className="btn primary" onClick={() => onSave(draft)}>Guardar</button>
+        <button className="btn primary" onClick={() => {
+            setDeviceName(name);
+            onSave(draft);
+          }}>Guardar</button>
       </div>
       <p className="muted small">
         Internet sólo se usa para descargar. Durante el show la app funciona sin conexión.

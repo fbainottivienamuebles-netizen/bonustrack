@@ -12,8 +12,8 @@ import {
   type PlaybackClock,
 } from "@letras/shared";
 
-export function usePlayer(durationMs: number) {
-  const [clock, setClock] = useState<PlaybackClock>(STOPPED_CLOCK);
+export function usePlayer(durationMs: number, initial: PlaybackClock = STOPPED_CLOCK) {
+  const [clock, setClock] = useState<PlaybackClock>(initial);
   const [now, setNow] = useState(() => performance.now());
   const raf = useRef(0);
 

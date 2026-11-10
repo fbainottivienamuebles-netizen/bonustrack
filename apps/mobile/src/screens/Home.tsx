@@ -4,6 +4,9 @@ import { useCallback, useEffect, useState } from "react";
 import { flattenSetlist, type OfflineBundle, type SetlistSummary } from "@letras/shared";
 import { ApiError, fetchBundle, fetchSetlists } from "../lib/api";
 import { deleteBundle, listBundles, putBundle, type Settings } from "../lib/storage";
+import type { DirectorInfo } from "../lib/local-link";
+import { GroupSection } from "../components/GroupSection";
+import type { FollowMode, FollowSource } from "./Follow";
 
 function fmtDate(iso: string) {
   return new Date(iso).toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short" });
@@ -11,11 +14,15 @@ function fmtDate(iso: string) {
 
 export function Home({
   settings,
+  director,
   onOpen,
+  onFollow,
   onSettings,
 }: {
   settings: Settings;
+  director: DirectorInfo | null;
   onOpen: (b: OfflineBundle) => void;
+  onFollow: (source: FollowSource, mode: FollowMode) => void;
   onSettings: () => void;
 }) {
   const [local, setLocal] = useState<OfflineBundle[] | null>(null);
@@ -74,6 +81,8 @@ export function Home({
       </header>
 
       {msg && <p className={`msg ${msg.error ? "error" : ""}`}>{msg.text}</p>}
+
+      <GroupSection director={director} onFollow={onFollow} />
 
       <h2>En este dispositivo</h2>
       {local === null ? (

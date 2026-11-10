@@ -1,0 +1,14 @@
+{
+  "name": "director",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Servidor del director: sirve la app por WiFi local y reparte el estado del show.",
+  "scripts": {
+    "start": "node server.mjs"
+  },
+  "dependencies": {
+    "qrcode": "^1.5.4",
+    "ws": "^8.22.2"
+  }
+}
