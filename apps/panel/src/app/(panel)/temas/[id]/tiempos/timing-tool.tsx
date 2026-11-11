@@ -1,8 +1,9 @@
 "use client";
 
-// Marcar los tiempos de cada línea escuchando una grabación propia.
-// El audio se reproduce desde el archivo local: no se sube a ningún lado,
-// sólo se guardan los tiempos.
+// Marcar los tiempos de cada línea escuchando una grabación propia o el tema
+// en Spotify. El archivo local se reproduce desde la compu (no se sube a
+// ningún lado); de Spotify se usa su reproductor embebido. Sólo se guardan
+// los tiempos.
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -11,6 +12,68 @@ import { saveTimesAction } from "@/app/actions";
 import { fmtDuration } from "@/lib/format";
 
 type Times = (number | null)[];
+type Source = "file" | "spotify";
+
+// --- Spotify iFrame API (https://developer.spotify.com/documentation/embeds) ---
+
+interface SpotifyPlaybackUpdate {
+  data: { isPaused: boolean; isBuffering: boolean; duration: number; position: number };
+}
+interface SpotifyController {
+  addListener(event: "ready", cb: () => void): void;
+  addListener(event: "playback_update", cb: (e: SpotifyPlaybackUpdate) => void): void;
+  togglePlay(): void;
+  seek(seconds: number): void;
+  destroy(): void;
+}
+interface SpotifyIFrameAPI {
+  createController(
+    el: HTMLElement,
+    opts: { uri: string; width?: string | number; height?: string | number },
+    cb: (c: SpotifyController) => void,
+  ): void;
+}
+
+let spotifyApi: Promise<SpotifyIFrameAPI> | null = null;
+function loadSpotifyApi(): Promise<SpotifyIFrameAPI> {
+  if (spotifyApi) return spotifyApi;
+  spotifyApi = new Promise<SpotifyIFrameAPI>((resolve, reject) => {
+    (window as unknown as { onSpotifyIframeApiReady: (api: SpotifyIFrameAPI) => void }).onSpotifyIframeApiReady = resolve;
+    const s = document.createElement("script");
+    s.src = "https://open.spotify.com/embed/iframe-api/v1";
+    s.async = true;
+    s.onerror = () => {
+      spotifyApi = null;
+      s.remove();
+      reject(new Error("spotify"));
+    };
+    document.body.appendChild(s);
+  });
+  return spotifyApi;
+}
+
+/** Saca el id del tema de un link (open.spotify.com/…/track/ID) o URI (spotify:track:ID). */
+function spotifyTrackId(input: string): string | null {
+  const m = input
+    .trim()
+    .match(/(?:open\.spotify\.com\/(?:intl-[a-z-]+\/)?(?:embed\/)?track\/|spotify:track:)([A-Za-z0-9]{22})/);
+  return m ? m[1] : null;
+}
+
+const now = () => performance.now();
+
+function storageGet(key: string): string | null {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+function storageSet(key: string, value: string) {
+  try {
+    localStorage.setItem(key, value);
+  } catch {}
+}
 
 interface Mark {
   index: number;
@@ -52,6 +115,15 @@ export function TimingTool({ song }: { song: Song }) {
   const [posMs, setPosMs] = useState(0);
   const [rate, setRate] = useState(1);
 
+  const [source, setSource] = useState<Source>("file");
+  const spKey = `letras:spotify:${song.id}`;
+  const [spInput, setSpInput] = useState("");
+  const [spId, setSpId] = useState<string | null>(null);
+  const [spReady, setSpReady] = useState(false);
+  const spWrapRef = useRef<HTMLDivElement>(null);
+  // Última posición informada por Spotify; entre avisos se estima con el reloj.
+  const sp = useRef({ controller: null as SpotifyController | null, pos: 0, at: 0, paused: true, dur: 0 });
+
   const [times, setTimes] = useState<Times>(() => timeline.map((l) => l.tiempoInicioMs));
   const [cursor, setCursor] = useState(0);
   const [selected, setSelected] = useState<number | null>(null);
@@ -64,17 +136,117 @@ export function TimingTool({ song }: { song: Song }) {
   // Liberar el archivo al cambiarlo o salir.
   useEffect(() => () => void (src && URL.revokeObjectURL(src)), [src]);
 
+  /** Posición actual de la fuente elegida, en ms. */
+  function currentMs(): number {
+    if (source === "file") return (audioRef.current?.currentTime ?? 0) * 1000;
+    const s = sp.current;
+    const ms = s.paused ? s.pos : s.pos + (performance.now() - s.at);
+    return s.dur ? Math.min(ms, s.dur) : ms;
+  }
+
   // Posición en cada frame mientras suena.
   useEffect(() => {
     if (!playing) return;
     let raf = 0;
     const tick = () => {
-      if (audioRef.current) setPosMs(audioRef.current.currentTime * 1000);
+      setPosMs(currentMs());
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [playing]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playing, source]);
+
+  // Reproductor de Spotify.
+  useEffect(() => {
+    if (source !== "spotify" || !spId) return;
+    const wrap = spWrapRef.current;
+    if (!wrap) return;
+    let cancelled = false;
+    let controller: SpotifyController | null = null;
+    loadSpotifyApi()
+      .then((api) => {
+        if (cancelled) return;
+        // El API reemplaza el elemento por el iframe: usamos uno propio, fuera de React.
+        const host = document.createElement("div");
+        wrap.appendChild(host);
+        api.createController(host, { uri: `spotify:track:${spId}`, width: "100%", height: 152 }, (c) => {
+          if (cancelled) return c.destroy();
+          controller = c;
+          sp.current = { controller: c, pos: 0, at: performance.now(), paused: true, dur: 0 };
+          c.addListener("ready", () => setSpReady(true));
+          c.addListener("playback_update", (e) => {
+            const { isPaused, isBuffering, position, duration } = e.data;
+            const s = sp.current;
+            s.pos = position;
+            s.at = performance.now();
+            s.paused = isPaused || isBuffering;
+            if (duration > 0 && duration !== s.dur) {
+              s.dur = duration;
+              setAudioDur(duration / 1000);
+            }
+            setPlaying(!isPaused);
+            if (s.paused) setPosMs(position);
+          });
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setStatus({ error: true, text: "No se pudo cargar el reproductor de Spotify. Revisá la conexión." });
+      });
+    return () => {
+      cancelled = true;
+      controller?.destroy();
+      sp.current.controller = null;
+      wrap.innerHTML = "";
+      setSpReady(false);
+      setPlaying(false);
+      setAudioDur(null);
+      setPosMs(0);
+    };
+  }, [source, spId]);
+
+  // Si se hace clic en el reproductor de Spotify, el foco queda en su iframe y
+  // los atajos dejan de llegar: lo devolvemos a la página.
+  useEffect(() => {
+    if (source !== "spotify") return;
+    const onBlur = () =>
+      setTimeout(() => {
+        const el = document.activeElement;
+        if (el instanceof HTMLIFrameElement && spWrapRef.current?.contains(el)) el.blur();
+      }, 0);
+    window.addEventListener("blur", onBlur);
+    return () => window.removeEventListener("blur", onBlur);
+  }, [source]);
+
+  function switchSource(s: Source) {
+    if (s === source) return;
+    audioRef.current?.pause(); // un <audio> desmontado puede seguir sonando
+    setPlaying(false);
+    setPosMs(0);
+    setAudioDur(null);
+    setSource(s);
+    // Recordar el último link de Spotify usado para este tema.
+    if (s === "spotify" && !spInput) {
+      const saved = storageGet(spKey);
+      if (saved) {
+        setSpInput(saved);
+        setSpId(spotifyTrackId(saved));
+      }
+    }
+  }
+
+  function loadSpotify() {
+    const id = spotifyTrackId(spInput);
+    if (!id) {
+      setStatus({ error: true, text: "Ese link no parece de un tema de Spotify (open.spotify.com/track/…)." });
+      return;
+    }
+    setStatus(null);
+    storageSet(spKey, spInput.trim());
+    setSpId(id);
+  }
+
+  const ready = source === "file" ? !!src : spReady;
 
   // Avisar si se sale con cambios sin guardar.
   useEffect(() => {
@@ -99,6 +271,10 @@ export function TimingTool({ song }: { song: Song }) {
   const audio = () => audioRef.current;
 
   function togglePlay() {
+    if (source === "spotify") {
+      sp.current.controller?.togglePlay();
+      return;
+    }
     const a = audio();
     if (!a) return;
     if (a.paused) void a.play();
@@ -106,6 +282,16 @@ export function TimingTool({ song }: { song: Song }) {
   }
 
   function seek(ms: number) {
+    if (source === "spotify") {
+      const s = sp.current;
+      if (!s.controller) return;
+      const t = Math.max(0, s.dur ? Math.min(ms, s.dur) : ms);
+      s.controller.seek(t / 1000);
+      s.pos = t;
+      s.at = now();
+      setPosMs(t);
+      return;
+    }
     const a = audio();
     if (!a) return;
     a.currentTime = Math.max(0, ms / 1000);
@@ -113,9 +299,8 @@ export function TimingTool({ song }: { song: Song }) {
   }
 
   function mark() {
-    const a = audio();
-    if (!a || cursor >= timeline.length) return;
-    const t = Math.round(a.currentTime * 1000);
+    if (!ready || cursor >= timeline.length) return;
+    const t = Math.round(currentMs());
     setHistory((h) => [...h, { index: cursor, prev: times[cursor], prevCursor: cursor }]);
     setTimes((ts) => ts.map((x, i) => (i === cursor ? t : x)));
     setSelected(cursor);
@@ -219,6 +404,57 @@ export function TimingTool({ song }: { song: Song }) {
       <div className="min-w-0 space-y-4">
         {/* Reproductor */}
         <div className="card space-y-3 p-4">
+          <div className="flex gap-1 rounded-lg bg-accent/5 p-1 text-sm" role="tablist">
+            {(
+              [
+                ["file", "Grabación propia"],
+                ["spotify", "Spotify"],
+              ] as const
+            ).map(([s, label]) => (
+              <button
+                key={s}
+                role="tab"
+                aria-selected={source === s}
+                onClick={(e) => {
+                  switchSource(s);
+                  e.currentTarget.blur();
+                }}
+                className={`flex-1 rounded-md px-3 py-1.5 ${source === s ? "bg-accent text-white" : "text-muted hover:text-foreground"}`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {source === "spotify" && (
+            <>
+              <form
+                className="flex flex-wrap gap-2"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  loadSpotify();
+                  (document.activeElement as HTMLElement | null)?.blur?.();
+                }}
+              >
+                <input
+                  type="url"
+                  className="input min-w-0 flex-1"
+                  placeholder="Pegá el link del tema: https://open.spotify.com/track/…"
+                  value={spInput}
+                  onChange={(e) => setSpInput(e.target.value)}
+                />
+                <button className="btn" type="submit">Cargar</button>
+              </form>
+              <div ref={spWrapRef} />
+              {spId && (
+                <p className="text-xs text-muted">
+                  Si sólo suena una muestra de 30 s, iniciá sesión en Spotify en este navegador y recargá la página.
+                </p>
+              )}
+            </>
+          )}
+
+          {source === "file" && (
           <div className="flex flex-wrap items-center gap-3">
             <label className="btn cursor-pointer">
               {fileName ? "Cambiar grabación" : "Elegir grabación…"}
@@ -241,10 +477,10 @@ export function TimingTool({ song }: { song: Song }) {
               {fileName ?? "mp3, m4a, wav… se reproduce desde tu compu, no se sube"}
             </span>
           </div>
+          )}
 
-          {src && (
-            <>
-              <audio
+          {source === "file" && src && (
+            <audio
                 ref={audioRef}
                 src={src}
                 preload="auto"
@@ -257,6 +493,10 @@ export function TimingTool({ song }: { song: Song }) {
                 onEnded={() => setPlaying(false)}
                 onSeeked={(e) => setPosMs(e.currentTarget.currentTime * 1000)}
               />
+          )}
+
+          {ready && (
+            <>
               <div className="flex flex-wrap items-center gap-2">
                 <button className="btn-primary w-24" onClick={togglePlay}>
                   {playing ? "❚❚ Pausa" : "▶ Play"}
@@ -266,6 +506,7 @@ export function TimingTool({ song }: { song: Song }) {
                 <span className="font-mono text-sm tabular-nums">
                   {formatTime(posMs)} <span className="text-muted">/ {audioDur ? fmtDuration(Math.round(audioDur)) : "–"}</span>
                 </span>
+                {source === "file" && (
                 <label className="ml-auto flex items-center gap-2 text-sm text-muted">
                   Velocidad
                   <select
@@ -283,6 +524,7 @@ export function TimingTool({ song }: { song: Song }) {
                     <option value={0.5}>50 %</option>
                   </select>
                 </label>
+                )}
               </div>
               <input
                 type="range"
@@ -302,7 +544,7 @@ export function TimingTool({ song }: { song: Song }) {
         <button
           className="btn-primary w-full py-5 text-lg"
           onClick={mark}
-          disabled={!src || cursor >= timeline.length}
+          disabled={!ready || cursor >= timeline.length}
         >
           {cursor >= timeline.length ? "Todas las líneas marcadas ✓" : `MARCAR  ·  “${timeline[cursor].texto}”`}
         </button>
@@ -373,7 +615,7 @@ export function TimingTool({ song }: { song: Song }) {
             <label className="flex items-start gap-2 text-muted">
               <input type="checkbox" checked={useAudioDur} onChange={(e) => setUseAudioDur(e.target.checked)} className="mt-1" />
               <span>
-                Usar la duración de la grabación ({fmtDuration(Math.round(audioDur))}) en vez de {fmtDuration(song.duracionSegundos)}
+                Usar la duración {source === "spotify" ? "de Spotify" : "de la grabación"} ({fmtDuration(Math.round(audioDur))}) en vez de {fmtDuration(song.duracionSegundos)}
               </span>
             </label>
           )}
@@ -389,7 +631,7 @@ export function TimingTool({ song }: { song: Song }) {
 
         <div className="text-xs leading-relaxed text-muted">
           <p className="mb-1 font-medium text-foreground">Cómo usarlo</p>
-          Elegí la grabación, dale play y apretá <b>Espacio</b> justo cuando empieza cada línea. Si te equivocás,
+          Elegí la grabación (o pegá el link de Spotify), dale play y apretá <b>Espacio</b> justo cuando empieza cada línea. Si te equivocás,
           <b> Borrar</b> deshace. Hacé clic en una línea para escucharla desde 2 s antes y volver a marcarla desde
           ahí. Las líneas sin marcar (en gris) se reparten solas entre las vecinas.
         </div>
