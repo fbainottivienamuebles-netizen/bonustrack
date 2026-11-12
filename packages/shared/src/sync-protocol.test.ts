@@ -25,6 +25,9 @@ test("clockFromState adelanta la posición si está sonando", () => {
   assert.equal(clock.anchorWallMs, 42);
   const paused = clockFromState({ ...st, status: "paused" }, 5000, 9000, 0);
   assert.equal(paused.anchorPositionMs, 10_000);
+  // Durante la cuenta previa la posición es negativa y se respeta.
+  const counting = clockFromState({ status: "playing", positionMs: -2000, rate: 1 }, 5000, 5500, 0);
+  assert.equal(counting.anchorPositionMs, -1500);
 });
 
 test("payload BLE ida y vuelta", () => {
@@ -40,6 +43,11 @@ test("payload BLE ida y vuelta", () => {
   assert.equal(buf.length, 16);
   assert.deepEqual(decodeBlePayload(buf), { ...p, seq: 70_001 & 0xffff });
   assert.equal(decodeBlePayload(new Uint8Array(16)), null); // versión 0
+});
+
+test("payload BLE: posición negativa (cuenta previa)", () => {
+  const buf = encodeBlePayload({ seq: 1, setlistHash: 1, entryIndex: 0, status: "playing", positionMs: -3500, rate: 1 });
+  assert.equal(decodeBlePayload(buf)!.positionMs, -3500);
 });
 
 test("hash32 es estable", () => {

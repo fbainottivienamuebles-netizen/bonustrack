@@ -38,6 +38,13 @@ export function GroupSection({
         <button className="btn full" onClick={() => onFollow({ kind: "wifi", base: director.base }, "escenario")}>
           Usar como pantalla de escenario (letra grande)
         </button>
+        <button
+          className="btn full"
+          style={{ marginTop: ".5rem" }}
+          onClick={() => onFollow({ kind: "wifi", base: director.base }, "video")}
+        >
+          Usar como pantalla de video (proyector para el público)
+        </button>
       </>
     );
   }

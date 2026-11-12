@@ -19,6 +19,12 @@ enum SectionType {
   outro
 }
 
+enum ClickSound {
+  madera
+  cencerro
+  beep
+}
+
 enum TempoSource {
   manual
   detectadoEnVivo
@@ -31,8 +37,17 @@ model Song {
   duracionSegundos   Int
   bpmManual          Int?
   fuenteTempo        TempoSource @default(manual)
+  /// Compás, ej. 4/4, 3/4, 6/8 (clics por compás y acento del primer tiempo)
+  compas             String      @default("4/4")
+  /// Compases de cuenta previa (1 a 4)
+  compasesCuenta     Int         @default(2)
+  sonidoClic         ClickSound  @default(madera)
+  /// Video de fondo en loop para la Pantalla (público)
   videoUrl           String?
+  /// Tempo al que va el video, para ajustar su velocidad
   videoBpmReferencia Int?
+  /// Link de referencia (YouTube, Spotify…), solo para el panel
+  referenciaUrl      String?
   secciones          Section[]
   tandaSongs         TandaSong[]
   createdAt          DateTime    @default(now())

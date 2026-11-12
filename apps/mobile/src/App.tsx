@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { OfflineBundle } from "@letras/shared";
+import { Check } from "./screens/Check";
 import { Follow, type FollowMode, type FollowSource } from "./screens/Follow";
 import { Home } from "./screens/Home";
 import { SettingsScreen } from "./screens/SettingsScreen";
@@ -10,17 +11,18 @@ import { loadSettings, requestPersistence, saveSettings, type Settings } from ".
 type Screen =
   | { name: "home" }
   | { name: "settings" }
+  | { name: "check" }
   | { name: "show"; bundle: OfflineBundle }
   | { name: "follow"; source: FollowSource; mode: FollowMode };
 
-/** El QR del director abre ?modo=seguir; los monitores, ?modo=escenario. */
+/** El QR del director abre ?modo=seguir; los monitores, ?modo=escenario; el proyector, ?modo=video. */
 function initialScreen(): Screen {
   const modo = new URLSearchParams(location.search).get("modo");
-  if (modo === "seguir" || modo === "escenario")
+  if (modo === "seguir" || modo === "escenario" || modo === "video")
     return {
       name: "follow",
       source: { kind: "wifi", base: location.origin },
-      mode: modo === "escenario" ? "escenario" : "lista",
+      mode: modo === "seguir" ? "lista" : modo,
     };
   return loadSettings().serverUrl ? { name: "home" } : { name: "settings" };
 }
@@ -53,6 +55,8 @@ export default function App() {
           }}
         />
       );
+    case "check":
+      return <Check director={director} onClose={goHome} />;
     case "show":
       return <Show bundle={screen.bundle} director={director?.isHost ? director : null} onExit={goHome} />;
     case "follow":
@@ -65,6 +69,7 @@ export default function App() {
           onOpen={(bundle) => setScreen({ name: "show", bundle })}
           onFollow={(source, mode) => setScreen({ name: "follow", source, mode })}
           onSettings={() => setScreen({ name: "settings" })}
+          onCheck={() => setScreen({ name: "check" })}
         />
       );
   }

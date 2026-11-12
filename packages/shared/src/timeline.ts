@@ -70,9 +70,14 @@ export const STOPPED_CLOCK: PlaybackClock = {
   rate: 1,
 };
 
+/**
+ * Posición del tema. Puede ser NEGATIVA: durante la cuenta previa el ancla
+ * queda en el futuro (el instante en que arranca el tema) y la posición
+ * cuenta hacia 0. Ver click.ts.
+ */
 export function clockPosition(c: PlaybackClock, nowMs: number): number {
   if (c.status !== "playing") return c.anchorPositionMs;
-  return Math.max(0, c.anchorPositionMs + (nowMs - c.anchorWallMs) * c.rate);
+  return c.anchorPositionMs + (nowMs - c.anchorWallMs) * c.rate;
 }
 
 export function clockPlay(c: PlaybackClock, nowMs: number): PlaybackClock {

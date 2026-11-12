@@ -3,6 +3,8 @@
 // - "lista": celulares y tablets.
 // - "escenario": monitores para las cantantes (letra más grande, sin botones
 //   a la vista; un click pone pantalla completa).
+// - "video": la Pantalla para el público (proyector): video de fondo del
+//   tema, sin letra (ver VideoStage).
 //
 // Fuentes: WiFi local (servidor del director) o Bluetooth (puente Android).
 // Si la conexión se corta, la letra sigue avanzando con el reloj propio.
@@ -10,7 +12,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   buildTimeline,
+  clickPlan,
   clockFromState,
+  countInAt,
   clockPosition,
   flattenSetlist,
   hash32,
@@ -19,6 +23,7 @@ import {
   type OfflineBundle,
   type PlaybackClock,
 } from "@letras/shared";
+import { CountIn } from "../components/CountIn";
 import { Lyrics } from "../components/Lyrics";
 import {
   BLE_LATENCY_MS,
@@ -33,14 +38,16 @@ import { fmt } from "../lib/format";
 import { useLocalLink } from "../lib/local-link";
 import { listBundles, putBundle } from "../lib/storage";
 import { useFollowClock } from "../lib/use-follow-clock";
+import { saveBundleVideos } from "../lib/videos";
+import { VideoStage } from "./VideoStage";
 import { allowScreenOff, keepScreenOn } from "../lib/wake";
 
-export type FollowMode = "lista" | "escenario";
+export type FollowMode = "lista" | "escenario" | "video";
 export type FollowSource = { kind: "wifi"; base: string } | { kind: "ble" };
 
 type Conn = { ok: boolean; text: string };
 
-interface Where {
+export interface Where {
   bundle: OfflineBundle | null;
   entryIndex: number;
   conn: Conn;
@@ -63,7 +70,9 @@ export function Follow({ source, ...props }: Props & { source: FollowSource }) {
 function FollowBle({ mode, onExit }: Props) {
   const { clock, position, apply } = useFollowClock();
   const where = useBle(apply);
-  return <FollowView where={where} position={position} playing={clock.status === "playing"} mode={mode} onExit={onExit} />;
+  if (mode === "video")
+    return <VideoStage where={where} clock={clock} position={position} director={null} onExit={onExit} />;
+  return <FollowView where={where} position={position} playing={clock.status === "playing"} rate={clock.rate} mode={mode} onExit={onExit} />;
 }
 
 function FollowWifi({ base, mode, onExit }: Props & { base: string }) {
@@ -74,11 +83,14 @@ function FollowWifi({ base, mode, onExit }: Props & { base: string }) {
   const [bridgeMsg, setBridgeMsg] = useState<string | null>(null);
   useBridge(bridge, where, clock);
 
+  if (mode === "video")
+    return <VideoStage where={where} clock={clock} position={position} director={base} onExit={onExit} />;
+
   return (
     <FollowView
       where={where}
       position={position}
-      playing={clock.status === "playing"}
+      playing={clock.status === "playing"} rate={clock.rate}
       mode={mode}
       onExit={onExit}
       extra={
@@ -113,14 +125,17 @@ function FollowWifi({ base, mode, onExit }: Props & { base: string }) {
 // ---------- WiFi ----------
 
 function useWifi(base: string, mode: FollowMode, apply: (c: PlaybackClock, tol?: number) => void): Where {
-  const { link, snap } = useLocalLink(base, mode === "escenario" ? "pantalla" : "seguidor");
+  const { link, snap } = useLocalLink(base, mode === "video" ? "pantalla" : "seguidor");
   const bundle = snap?.bundle ?? null;
   const st = snap?.state ?? null;
 
   // Guardar el setlist en el equipo (sirve después para seguir por Bluetooth).
+  // La Pantalla también se guarda los videos (los baja del director).
   useEffect(() => {
-    if (bundle) putBundle(bundle).catch(() => {});
-  }, [bundle]);
+    if (!bundle) return;
+    putBundle(bundle).catch(() => {});
+    if (mode === "video") saveBundleVideos(bundle, { director: base }).catch(() => {});
+  }, [bundle, mode, base]);
 
   const ready = !!link && snap?.status === "online";
   useEffect(() => {
@@ -260,6 +275,7 @@ function FollowView({
   where,
   position,
   playing,
+  rate,
   mode,
   onExit,
   extra,
@@ -267,6 +283,7 @@ function FollowView({
   where: Where;
   position: number;
   playing: boolean;
+  rate: number;
   mode: FollowMode;
   onExit: () => void;
   extra?: React.ReactNode;
@@ -299,6 +316,7 @@ function FollowView({
   const entry = entries[Math.min(where.entryIndex, entries.length - 1)];
   const song = entry ? songs.get(entry.songId) : undefined;
   const timeline = useMemo(() => (song ? buildTimeline(song.secciones) : []), [song]);
+  const plan = useMemo(() => (song ? clickPlan(song) : null), [song]);
 
   const status = (
     <span className={`room-badge ${where.conn.ok ? "ok" : "bad"}`} title={where.conn.text}>
@@ -321,7 +339,8 @@ function FollowView({
 
   const duration = songDurationMs(song);
   const shown = Math.min(Math.max(0, position), duration);
-  const active = lineAt(timeline, shown + prefs.leadMs);
+  // Durante la cuenta previa (posición negativa) todavía no se marca ninguna línea.
+  const active = lineAt(timeline, Math.min(position, duration) + prefs.leadMs);
   const nextEntry = entries[where.entryIndex + 1];
 
   return (
@@ -351,6 +370,7 @@ function FollowView({
           </div>
         )}
       </Lyrics>
+      <CountIn view={countInAt(plan, position, rate)} />
 
       {showControls && (
         <footer className="follow-bar" onClick={(e) => e.stopPropagation()}>

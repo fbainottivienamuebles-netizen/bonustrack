@@ -6,12 +6,18 @@
 //   No interpreta el show: solo retransmite y guarda, así es muy simple.
 // - /api/local/info y /api/local/qr.svg: para que la app sepa que está en una
 //   sala local y muestre el código QR para unirse.
+// - /api/local/video?u=<url>: videos de fondo de la Pantalla. La notebook los
+//   baja de internet una vez (cuando se abre el setlist con internet) y los
+//   guarda en apps/director/videos; después los sirve en la red local.
 
 import http from "node:http";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { exec } from "node:child_process";
+import crypto from "node:crypto";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import { fileURLToPath } from "node:url";
 import { performance } from "node:perf_hooks";
 import { WebSocketServer } from "ws";
@@ -20,6 +26,8 @@ import QRCode from "qrcode";
 const PORT = Number(process.env.PORT) || 8787;
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const DIST = path.resolve(HERE, "../mobile/dist");
+const VIDEOS = path.resolve(HERE, "videos");
+const MAX_VIDEO_BYTES = 300 * 1024 * 1024;
 
 const TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -77,6 +85,8 @@ async function handle(req, res) {
     return res.end(svg);
   }
 
+  if (url.pathname === "/api/local/video") return serveVideo(req, res, url.searchParams.get("u") ?? "");
+
   if (req.method !== "GET" && req.method !== "HEAD") {
     res.writeHead(405);
     return res.end();
@@ -99,6 +109,76 @@ async function handle(req, res) {
     "Content-Type": TYPES[ext] ?? "application/octet-stream",
     "Cache-Control": hashed ? "public, max-age=31536000, immutable" : "no-cache",
   });
+  if (req.method === "HEAD") return res.end();
+  fs.createReadStream(file).pipe(res);
+}
+
+// ---------- Videos de fondo ----------
+
+function videoPaths(u) {
+  const id = crypto.createHash("sha1").update(u).digest("hex");
+  return { file: path.join(VIDEOS, id + ".bin"), meta: path.join(VIDEOS, id + ".json") };
+}
+
+const downloading = new Map(); // url → Promise
+
+/** Baja el video a la notebook (una sola vez aunque lo pidan varios). */
+function cacheVideo(u) {
+  const { file, meta } = videoPaths(u);
+  if (fs.existsSync(file) && fs.existsSync(meta)) return Promise.resolve(true);
+  if (downloading.has(u)) return downloading.get(u);
+  const p = (async () => {
+    fs.mkdirSync(VIDEOS, { recursive: true });
+    const r = await fetch(u, { signal: AbortSignal.timeout(120_000) });
+    if (!r.ok || !r.body) throw new Error("HTTP " + r.status);
+    const type = r.headers.get("content-type") ?? "video/mp4";
+    if (!/^video\/|^application\/octet-stream/.test(type)) throw new Error("no es un video: " + type);
+    const len = Number(r.headers.get("content-length") ?? 0);
+    if (len > MAX_VIDEO_BYTES) throw new Error("video demasiado grande");
+    const tmp = file + ".part";
+    await pipeline(Readable.fromWeb(r.body), fs.createWriteStream(tmp));
+    fs.renameSync(tmp, file);
+    fs.writeFileSync(meta, JSON.stringify({ url: u, type }));
+    console.log(`  🎞 Video guardado en la notebook (${(fs.statSync(file).size / 1e6).toFixed(1)} MB)`);
+    return true;
+  })().finally(() => downloading.delete(u));
+  return p;
+}
+
+/** Al abrir un setlist, la notebook se guarda sus videos (si hay internet). */
+function prefetchVideos(bundle) {
+  const urls = new Set((bundle?.songs ?? []).map((s) => s.videoUrl).filter((u) => /^https:\/\//.test(u ?? "")));
+  for (const u of urls) cacheVideo(u).catch(() => {});
+}
+
+async function serveVideo(req, res, u) {
+  if (!/^https:\/\/\S+$/.test(u)) return json(res, 400, { error: "url inválida" });
+  const { file, meta } = videoPaths(u);
+  if (!fs.existsSync(file)) {
+    try {
+      await cacheVideo(u);
+    } catch {
+      return json(res, 404, { error: "Video no disponible en la notebook (se baja la próxima vez que haya internet)" });
+    }
+  }
+  const { type } = JSON.parse(fs.readFileSync(meta, "utf8"));
+  const size = fs.statSync(file).size;
+  const head = { "Content-Type": type, "Accept-Ranges": "bytes", "Cache-Control": "no-cache" };
+  const range = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range ?? "");
+  if (range && (range[1] || range[2])) {
+    let start = range[1] ? Number(range[1]) : size - Number(range[2]);
+    let end = range[1] && range[2] ? Number(range[2]) : size - 1;
+    start = Math.max(0, start);
+    end = Math.min(size - 1, end);
+    if (start > end) {
+      res.writeHead(416, { "Content-Range": `bytes */${size}` });
+      return res.end();
+    }
+    res.writeHead(206, { ...head, "Content-Range": `bytes ${start}-${end}/${size}`, "Content-Length": end - start + 1 });
+    if (req.method === "HEAD") return res.end();
+    return fs.createReadStream(file, { start, end }).pipe(res);
+  }
+  res.writeHead(200, { ...head, "Content-Length": size });
   if (req.method === "HEAD") return res.end();
   fs.createReadStream(file).pipe(res);
 }
@@ -171,6 +251,7 @@ wss.on("connection", (ws) => {
         if (me?.role !== "controlador") return;
         lastBundle = text;
         broadcast(text, ws);
+        prefetchVideos(msg.bundle);
         console.log(`  ♪ Setlist abierto: ${msg.bundle?.setlist?.nombre ?? "?"}`);
         break;
       case "state":

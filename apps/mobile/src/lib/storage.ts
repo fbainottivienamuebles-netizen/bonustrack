@@ -3,6 +3,8 @@
 // - Ajustes (URL del panel y clave): localStorage, son chicos.
 // - Paquetes offline: IndexedDB, persiste en el WebView de Capacitor y en el
 //   navegador. Toda la app en modo show lee SOLO de acá, nunca de la red.
+// - Videos de fondo (Pantalla): IndexedDB también, como archivos (Blob),
+//   guardados por su URL.
 
 import { isOfflineBundle, type OfflineBundle } from "@letras/shared";
 
@@ -31,25 +33,42 @@ export function saveSettings(s: Settings) {
 
 const DB_NAME = "letras";
 const STORE = "bundles";
+const VIDEOS = "videos";
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 
 function openDb(): Promise<IDBDatabase> {
   dbPromise ??= new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, 1);
-    req.onupgradeneeded = () => req.result.createObjectStore(STORE);
-    req.onsuccess = () => resolve(req.result);
+    const req = indexedDB.open(DB_NAME, 2);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE);
+      if (!db.objectStoreNames.contains(VIDEOS)) db.createObjectStore(VIDEOS);
+    };
+    req.onsuccess = () => {
+      // Si otra pestaña con una versión nueva de la app necesita actualizar la
+      // base, esta la suelta (y la vuelve a abrir en el próximo uso).
+      req.result.onversionchange = () => {
+        req.result.close();
+        dbPromise = null;
+      };
+      resolve(req.result);
+    };
     req.onerror = () => reject(req.error);
   });
   return dbPromise;
 }
 
-function tx<T>(mode: IDBTransactionMode, run: (s: IDBObjectStore) => IDBRequest<T>): Promise<T> {
+function tx<T>(
+  mode: IDBTransactionMode,
+  run: (s: IDBObjectStore) => IDBRequest<T>,
+  store: string = STORE,
+): Promise<T> {
   return openDb().then(
     (db) =>
       new Promise<T>((resolve, reject) => {
-        const t = db.transaction(STORE, mode);
-        const req = run(t.objectStore(STORE));
+        const t = db.transaction(store, mode);
+        const req = run(t.objectStore(store));
         t.oncomplete = () => resolve(req.result);
         t.onerror = () => reject(t.error);
       }),
@@ -79,4 +98,24 @@ export async function deleteBundle(setlistId: string) {
 /** Pide al sistema que no borre los datos por falta de espacio (best effort). */
 export function requestPersistence() {
   navigator.storage?.persist?.().catch(() => {});
+}
+
+// ---------- Videos ----------
+
+export async function getVideo(url: string): Promise<Blob | null> {
+  const v = await tx<unknown>("readonly", (s) => s.get(url), VIDEOS);
+  return v instanceof Blob ? v : null;
+}
+
+export async function putVideo(url: string, blob: Blob) {
+  await tx("readwrite", (s) => s.put(blob, url), VIDEOS);
+}
+
+export async function listVideoUrls(): Promise<string[]> {
+  const keys = await tx<IDBValidKey[]>("readonly", (s) => s.getAllKeys(), VIDEOS);
+  return keys.map(String);
+}
+
+export async function deleteVideo(url: string) {
+  await tx("readwrite", (s) => s.delete(url), VIDEOS);
 }

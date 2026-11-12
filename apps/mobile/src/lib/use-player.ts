@@ -59,5 +59,15 @@ export function usePlayer(durationMs: number, initial: PlaybackClock = STOPPED_C
       ),
     seek: (ms: number) => act((c, t) => clockSeek(c, Math.min(Math.max(0, ms), durationMs), t)),
     setRate: (rate: number) => act((c, t) => clockSetRate(c, rate, t)),
+    /**
+     * Arranca con `positionMs` en el instante `wallMs` (performance.now). Si
+     * wallMs está en el futuro, la posición es negativa hasta entonces: es la
+     * cuenta previa.
+     */
+    playAt: (positionMs: number, wallMs: number) =>
+      act((c) => ({ status: "playing", anchorPositionMs: positionMs, anchorWallMs: wallMs, rate: c.rate })),
+    pause: () => act((c, t) => clockPause(c, t)),
+    /** Vuelve al principio, detenido (mantiene el tempo). */
+    stop: () => act((c) => ({ ...STOPPED_CLOCK, rate: c.rate })),
   };
 }

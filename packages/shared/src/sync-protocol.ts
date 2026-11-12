@@ -143,7 +143,8 @@ export function clockFromState(
   const elapsed = s.status === "playing" ? Math.max(0, serverNowMs - atServerMs) * s.rate : 0;
   return {
     status: s.status,
-    anchorPositionMs: Math.max(0, s.positionMs + elapsed),
+    // Sin tope en 0: negativo = cuenta previa en curso (ver click.ts).
+    anchorPositionMs: s.positionMs + elapsed,
     anchorWallMs: localNowMs,
     rate: s.rate,
   };
@@ -156,7 +157,7 @@ export function clockFromState(
 //  3-6   hash del setlistId (uint32)
 //  7-8   entryIndex (uint16)
 //  9     status (0 stopped, 1 playing, 2 paused)
-//  10-13 positionMs (uint32)
+//  10-13 positionMs (int32: negativo durante la cuenta previa)
 //  14-15 rate × 1000 (uint16)
 //
 // La letra NO viaja por Bluetooth: cada celular ya tiene que tener el setlist
@@ -194,7 +195,7 @@ export function encodeBlePayload(p: BlePacket): Uint8Array {
   dv.setUint32(3, p.setlistHash >>> 0);
   dv.setUint16(7, Math.max(0, Math.min(0xffff, p.entryIndex)));
   dv.setUint8(9, Math.max(0, STATUS_CODES.indexOf(p.status)));
-  dv.setUint32(10, Math.max(0, Math.min(0xffffffff, Math.round(p.positionMs))));
+  dv.setInt32(10, Math.max(-0x7fffffff, Math.min(0x7fffffff, Math.round(p.positionMs))));
   dv.setUint16(14, Math.max(0, Math.min(0xffff, Math.round(p.rate * 1000))));
   return buf;
 }
@@ -211,7 +212,7 @@ export function decodeBlePayload(buf: Uint8Array): BlePacket | null {
     setlistHash: dv.getUint32(3),
     entryIndex: dv.getUint16(7),
     status,
-    positionMs: dv.getUint32(10),
+    positionMs: dv.getInt32(10),
     rate,
   };
 }

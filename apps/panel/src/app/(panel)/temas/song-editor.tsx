@@ -3,7 +3,13 @@
 import { useActionState, useMemo, useState } from "react";
 import Link from "next/link";
 import {
+  CLICK_SOUNDS,
+  CLICK_SOUND_LABELS,
+  DEFAULT_COMPAS,
+  DEFAULT_COMPASES_CUENTA,
+  DEFAULT_SONIDO_CLIC,
   SECTION_LABELS,
+  TIME_SIGNATURES,
   formatTime,
   parseLyrics,
   serializeLyrics,
@@ -11,6 +17,7 @@ import {
 } from "@letras/shared";
 import { saveSongAction, type FormState } from "@/app/actions";
 import { fmtDuration } from "@/lib/format";
+import { VideoField } from "./video-field";
 
 const PLACEHOLDER = `[intro]
 [verso]
@@ -26,7 +33,7 @@ function durationToSeconds(raw: string): number {
   return /^\d+$/.test(raw.trim()) ? Number(raw.trim()) : 0;
 }
 
-export function SongEditor({ song }: { song: Song | null }) {
+export function SongEditor({ song, videoUploadReady }: { song: Song | null; videoUploadReady: boolean }) {
   const [state, action, pending] = useActionState<FormState, FormData>(saveSongAction, {});
   const [duracion, setDuracion] = useState(song ? fmtDuration(song.duracionSegundos) : "");
   const [letra, setLetra] = useState(song ? serializeLyrics(song.secciones) : "");
@@ -81,29 +88,52 @@ export function SongEditor({ song }: { song: Song | null }) {
           />
         </div>
         <div className="sm:col-span-2">
-          <label className="label" htmlFor="videoBpmReferencia">BPM de la grabación</label>
-          <input
-            id="videoBpmReferencia"
-            name="videoBpmReferencia"
-            type="number"
-            min={30}
-            max={300}
-            className="input font-mono"
-            defaultValue={song?.videoBpmReferencia ?? ""}
-          />
+          <label className="label" htmlFor="compas">Compás</label>
+          <select id="compas" name="compas" className="input font-mono" defaultValue={song?.compas ?? DEFAULT_COMPAS}>
+            {[...new Set([...TIME_SIGNATURES, song?.compas ?? DEFAULT_COMPAS])].map((c) => (
+              <option key={c} value={c}>{c}</option>
+            ))}
+          </select>
         </div>
+        <div className="sm:col-span-2">
+          <label className="label" htmlFor="compasesCuenta">Cuenta previa</label>
+          <select
+            id="compasesCuenta"
+            name="compasesCuenta"
+            className="input"
+            defaultValue={String(song?.compasesCuenta ?? DEFAULT_COMPASES_CUENTA)}
+          >
+            {[1, 2, 3, 4].map((n) => (
+              <option key={n} value={n}>{n} compás{n > 1 ? "es" : ""}</option>
+            ))}
+          </select>
+        </div>
+        <div className="sm:col-span-2">
+          <label className="label" htmlFor="sonidoClic">Sonido del clic</label>
+          <select id="sonidoClic" name="sonidoClic" className="input" defaultValue={song?.sonidoClic ?? DEFAULT_SONIDO_CLIC}>
+            {CLICK_SOUNDS.map((c) => (
+              <option key={c} value={c}>{CLICK_SOUND_LABELS[c]}</option>
+            ))}
+          </select>
+        </div>
+        <p className="text-xs text-muted sm:col-span-6">
+          El clic usa el BPM y el compás del tema (en 6/8, 9/8 y 12/8 el BPM es el de la negra con puntillo). Sin BPM
+          no hay clic ni cuenta previa: el tema arranca directo.
+        </p>
         <div className="sm:col-span-6">
-          <label className="label" htmlFor="videoUrl">Video de referencia (URL, opcional)</label>
+          <label className="label" htmlFor="referenciaUrl">Link de referencia (YouTube, Spotify…, opcional)</label>
           <input
-            id="videoUrl"
-            name="videoUrl"
+            id="referenciaUrl"
+            name="referenciaUrl"
             type="url"
             className="input"
             placeholder="https://www.youtube.com/watch?v=…"
-            defaultValue={song?.videoUrl ?? ""}
+            defaultValue={song?.referenciaUrl ?? ""}
           />
         </div>
       </div>
+
+      <VideoField song={song} uploadReady={videoUploadReady} />
 
       <div className="grid gap-4 lg:grid-cols-2">
         <div>

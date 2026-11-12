@@ -3,7 +3,8 @@
 import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { parseLyrics } from "@letras/shared";
+import { CLICK_SOUNDS, clampBars, isValidCompas, parseLyrics, type ClickSound } from "@letras/shared";
+import { deleteStoredVideo } from "@/lib/videos";
 import {
   SESSION_COOKIE,
   SESSION_MAX_AGE,
@@ -14,6 +15,7 @@ import { requireSession } from "@/lib/session";
 import {
   deleteSetlist,
   deleteSong,
+  duplicateSetlist,
   getSong,
   saveSetlist,
   saveSong,
@@ -76,26 +78,44 @@ export async function saveSongAction(_: FormState, form: FormData): Promise<Form
   const bpmManual = optInt(form.get("bpmManual"), 30, 300);
   const videoBpmReferencia = optInt(form.get("videoBpmReferencia"), 30, 300);
   const videoUrl = String(form.get("videoUrl") ?? "").trim() || null;
+  const referenciaUrl = String(form.get("referenciaUrl") ?? "").trim() || null;
+  const compas = String(form.get("compas") ?? "4/4").trim().replace(/\s+/g, "");
+  const compasesCuenta = optInt(form.get("compasesCuenta"), 1, 4);
+  const sonidoRaw = String(form.get("sonidoClic") ?? "madera");
+  const sonidoClic: ClickSound = (CLICK_SOUNDS as readonly string[]).includes(sonidoRaw)
+    ? (sonidoRaw as ClickSound)
+    : "madera";
 
   if (!titulo) return { error: "Falta el título" };
   if (!artistaOriginal) return { error: "Falta el artista original" };
   if (!duracionSegundos) return { error: "Duración inválida (usá mm:ss)" };
   if (bpmManual === "error") return { error: "BPM inválido (30–300)" };
-  if (videoBpmReferencia === "error") return { error: "BPM de la grabación inválido (30–300)" };
-  if (videoUrl && !/^https?:\/\//i.test(videoUrl)) return { error: "La URL del video debe empezar con http(s)://" };
+  if (videoBpmReferencia === "error") return { error: "BPM del video inválido (30–300)" };
+  if (videoUrl && !/^https:\/\//i.test(videoUrl)) return { error: "La URL del video debe empezar con https://" };
+  if (referenciaUrl && !/^https?:\/\//i.test(referenciaUrl))
+    return { error: "El link de referencia debe empezar con http(s)://" };
+  if (!isValidCompas(compas)) return { error: "Compás inválido (ej. 4/4, 3/4, 6/8)" };
+  if (compasesCuenta === "error") return { error: "Compases de cuenta previa: de 1 a 4" };
 
   const { secciones, errores } = parseLyrics(String(form.get("letra") ?? ""), duracionSegundos);
   if (errores.length) return { error: errores.join("\n") };
 
+  const before = id ? await getSong(id) : null;
   const savedId = await saveSong(id, {
     titulo,
     artistaOriginal,
     duracionSegundos,
     bpmManual,
+    compas,
+    compasesCuenta: clampBars(compasesCuenta ?? 2),
+    sonidoClic,
     videoUrl,
     videoBpmReferencia,
+    referenciaUrl,
     secciones,
   });
+  // Si se cambió o se sacó el video, se borra el anterior del almacenamiento.
+  if (before?.videoUrl && before.videoUrl !== videoUrl) await deleteStoredVideo(before.videoUrl);
   revalidatePath("/temas");
   revalidatePath("/setlists");
   redirect(id ? "/temas" : `/temas/${savedId}`);
@@ -103,7 +123,8 @@ export async function saveSongAction(_: FormState, form: FormData): Promise<Form
 
 export async function deleteSongAction(_: FormState, form: FormData): Promise<FormState> {
   await requireSession();
-  const ok = await deleteSong(String(form.get("id")));
+  const { ok, videoUrl } = await deleteSong(String(form.get("id")));
+  if (ok && videoUrl) await deleteStoredVideo(videoUrl);
   if (!ok) return { error: "Este tema está en un setlist. Sacalo de ahí antes de borrarlo." };
   revalidatePath("/temas");
   redirect("/temas");
@@ -141,6 +162,13 @@ export async function saveSetlistAction(_: FormState, form: FormData): Promise<F
   revalidatePath("/setlists");
   revalidatePath("/temas");
   redirect("/setlists");
+}
+
+export async function duplicateSetlistAction(form: FormData) {
+  await requireSession();
+  const newId = await duplicateSetlist(String(form.get("id")));
+  revalidatePath("/setlists");
+  redirect(newId ? `/setlists/${newId}` : "/setlists");
 }
 
 export async function deleteSetlistAction(form: FormData) {
@@ -194,8 +222,12 @@ export async function saveTimesAction(
     artistaOriginal: song.artistaOriginal,
     duracionSegundos: dur,
     bpmManual: song.bpmManual,
+    compas: song.compas,
+    compasesCuenta: song.compasesCuenta,
+    sonidoClic: song.sonidoClic,
     videoUrl: song.videoUrl,
     videoBpmReferencia: song.videoBpmReferencia,
+    referenciaUrl: song.referenciaUrl,
     secciones,
   });
   revalidatePath("/temas");

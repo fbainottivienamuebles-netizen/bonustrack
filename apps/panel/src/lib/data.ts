@@ -1,5 +1,6 @@
 import "server-only";
 import type {
+  ClickSound,
   OfflineBundle,
   Section,
   Setlist,
@@ -26,8 +27,12 @@ function toSong(r: SongRow): Song {
     duracionSegundos: r.duracionSegundos,
     bpmManual: r.bpmManual,
     fuenteTempo: r.fuenteTempo,
+    compas: r.compas,
+    compasesCuenta: r.compasesCuenta,
+    sonidoClic: r.sonidoClic,
     videoUrl: r.videoUrl,
     videoBpmReferencia: r.videoBpmReferencia,
+    referenciaUrl: r.referenciaUrl,
     secciones: r.secciones.map((s) => ({
       tipo: s.tipo,
       lineas: s.lineas.map((l) => ({ texto: l.texto, tiempoInicioMs: l.tiempoInicioMs })),
@@ -47,6 +52,8 @@ export async function listSongs() {
       artistaOriginal: true,
       duracionSegundos: true,
       bpmManual: true,
+      compas: true,
+      videoUrl: true,
       _count: { select: { tandaSongs: true } },
       secciones: { select: { _count: { select: { lineas: true } } } },
     },
@@ -57,6 +64,8 @@ export async function listSongs() {
     artistaOriginal: r.artistaOriginal,
     duracionSegundos: r.duracionSegundos,
     bpmManual: r.bpmManual,
+    compas: r.compas,
+    tieneVideo: !!r.videoUrl,
     enSetlists: r._count.tandaSongs,
     lineas: r.secciones.reduce((n, s) => n + s._count.lineas, 0),
   }));
@@ -72,8 +81,12 @@ export interface SongInput {
   artistaOriginal: string;
   duracionSegundos: number;
   bpmManual: number | null;
+  compas: string;
+  compasesCuenta: number;
+  sonidoClic: ClickSound;
   videoUrl: string | null;
   videoBpmReferencia: number | null;
+  referenciaUrl: string | null;
   secciones: Section[];
 }
 
@@ -111,12 +124,15 @@ export async function saveSong(id: string | null, input: SongInput): Promise<str
   return id;
 }
 
-/** Devuelve false si el tema está en algún setlist (no se puede borrar). */
-export async function deleteSong(id: string): Promise<boolean> {
+/**
+ * Devuelve false si el tema está en algún setlist (no se puede borrar).
+ * Si se borra, devuelve también la URL de su video para borrarlo del almacenamiento.
+ */
+export async function deleteSong(id: string): Promise<{ ok: boolean; videoUrl?: string | null }> {
   const used = await db.tandaSong.count({ where: { songId: id } });
-  if (used > 0) return false;
-  await db.song.delete({ where: { id } });
-  return true;
+  if (used > 0) return { ok: false };
+  const s = await db.song.delete({ where: { id }, select: { videoUrl: true } });
+  return { ok: true, videoUrl: s.videoUrl };
 }
 
 // ---------- Setlists ----------
@@ -182,6 +198,16 @@ export async function saveSetlist(id: string | null, input: SetlistInput): Promi
     }),
   ]);
   return id;
+}
+
+/** Copia un setlist (mismas tandas y temas) con otro nombre. */
+export async function duplicateSetlist(id: string): Promise<string | null> {
+  const src = await getSetlist(id);
+  if (!src) return null;
+  return saveSetlist(null, {
+    nombre: `${src.nombre} (copia)`,
+    tandas: src.tandas.map((t) => ({ nombre: t.nombre, temas: t.temas.map((r) => r.songId) })),
+  });
 }
 
 export async function deleteSetlist(id: string) {

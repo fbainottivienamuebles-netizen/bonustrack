@@ -155,3 +155,66 @@ ul, ol { list-style: none; margin: 0; padding: 0; }
 .stage .show-head .title { font-size: 1.6rem; }
 .stage.idle { cursor: none; }
 .stage .lyrics { padding: 0 4vw; }
+
+/* ---------- Clic y cuenta previa ---------- */
+.click-bar { display: flex; align-items: center; justify-content: center; gap: .5rem; flex-wrap: wrap; }
+.click-info { font-variant-numeric: tabular-nums; }
+.select {
+  min-height: 36px; padding: .3rem .6rem; font: inherit; font-size: .9rem; color: var(--fg);
+  background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+}
+.select.full { width: 100%; min-height: 48px; font-size: 1rem; }
+.row.wrap { flex-wrap: wrap; align-items: center; }
+.row.tight { margin: 0; }
+.resume.warn { top: 70px; bottom: auto; background: #3a2c06; border-color: var(--warn); color: var(--warn); }
+.countin {
+  position: absolute; left: 50%; top: 42%; transform: translate(-50%, -50%); z-index: 6;
+  display: flex; flex-direction: column; align-items: center; gap: .6rem; pointer-events: none;
+  background: rgba(10, 10, 14, .88); border: 1px solid var(--accent); border-radius: 20px; padding: 1rem 1.6rem;
+}
+.countin-bar { font-size: .85rem; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.countin-beats { display: flex; gap: .9rem; }
+.countin-beats span {
+  font-size: clamp(2.6rem, 11vw, 6rem); font-weight: 800; line-height: 1; color: var(--border);
+  font-variant-numeric: tabular-nums; transition: color .05s;
+}
+.countin-beats span.past { color: var(--muted); }
+.countin-beats span.on { color: var(--active); }
+.countin.compact { top: auto; bottom: 14vh; transform: translateX(-50%); background: rgba(0, 0, 0, .55); border-color: transparent; }
+.countin.compact .countin-beats span { font-size: clamp(2rem, 6vw, 4.5rem); }
+
+/* ---------- Pantalla de video (público) ---------- */
+.video-stage { position: fixed; inset: 0; background: #000; overflow: hidden; }
+.video-stage.idle { cursor: none; }
+.video-bg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; animation: fade-in .6s ease; }
+.video-neutral {
+  position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 1rem; text-align: center; padding: 5vw; animation: fade-in .6s ease;
+  background: radial-gradient(ellipse at center, #1c1730 0%, #000 70%);
+}
+.video-title { font-size: clamp(2.2rem, 7vw, 6rem); font-weight: 800; letter-spacing: -.01em; }
+.video-artist { font-size: clamp(1.1rem, 3vw, 2.4rem); color: var(--muted); }
+.video-controls {
+  position: absolute; left: 12px; right: 12px; bottom: 12px; display: flex; gap: .8rem; align-items: center;
+  justify-content: space-between; flex-wrap: wrap; background: rgba(0, 0, 0, .65); border-radius: 12px; padding: .5rem .8rem;
+}
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+
+/* ---------- Chequeo previo ---------- */
+.overlay.full { align-items: stretch; background: var(--bg); z-index: 20; }
+.overlay.full > .screen { width: 100%; }
+.check { max-width: 760px; margin: 0 auto; width: 100%; }
+.check-list { display: flex; flex-direction: column; gap: .5rem; }
+.check-item { display: flex; gap: .75rem; align-items: flex-start; background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: .7rem .9rem; }
+.check-icon { flex: none; width: 1.6rem; height: 1.6rem; border-radius: 99px; display: grid; place-items: center; font-weight: 800; font-size: .85rem; background: var(--border); }
+.check-item.ok .check-icon { background: #12301f; color: #86efac; }
+.check-item.warn .check-icon { background: #3a2c06; color: var(--warn); }
+.check-item.bad .check-icon { background: #3b1414; color: #fca5a5; }
+.check-title { font-weight: 600; }
+.check-item .btn { margin-top: .4rem; }
+.check-box { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: .5rem 1rem 1rem; }
+.check-box .field { margin: .6rem 0; }
+.latency { display: flex; align-items: center; gap: 1.2rem; margin: .8rem 0; }
+.latency-dot { width: 72px; height: 72px; border-radius: 99px; background: var(--border); flex: none; }
+.latency-dot.on { background: var(--active); box-shadow: 0 0 30px var(--active); }
+.latency-value { font-size: 1.6rem; font-weight: 700; font-variant-numeric: tabular-nums; }

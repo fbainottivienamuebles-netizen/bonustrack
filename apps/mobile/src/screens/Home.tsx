@@ -6,6 +6,7 @@ import { ApiError, fetchBundle, fetchSetlists } from "../lib/api";
 import { deleteBundle, listBundles, putBundle, type Settings } from "../lib/storage";
 import type { DirectorInfo } from "../lib/local-link";
 import { GroupSection } from "../components/GroupSection";
+import { pruneVideos, saveBundleVideos } from "../lib/videos";
 import type { FollowMode, FollowSource } from "./Follow";
 
 function fmtDate(iso: string) {
@@ -18,12 +19,14 @@ export function Home({
   onOpen,
   onFollow,
   onSettings,
+  onCheck,
 }: {
   settings: Settings;
   director: DirectorInfo | null;
   onOpen: (b: OfflineBundle) => void;
   onFollow: (source: FollowSource, mode: FollowMode) => void;
   onSettings: () => void;
+  onCheck: () => void;
 }) {
   const [local, setLocal] = useState<OfflineBundle[] | null>(null);
   const [remote, setRemote] = useState<SetlistSummary[] | null>(null);
@@ -56,7 +59,18 @@ export function Home({
       const b = await fetchBundle(settings, id);
       await putBundle(b);
       await reloadLocal();
-      setMsg({ text: `“${b.setlist.nombre}” listo para usar sin internet (${b.songs.length} temas).` });
+      // Videos de fondo (para la Pantalla). Si hay director, también quedan en la notebook.
+      const v = await saveBundleVideos(b, {
+        director: director?.base ?? null,
+        onProgress: (done, total) =>
+          total > 0 && setMsg({ text: `Setlist guardado. Bajando videos de fondo: ${done} de ${total}…` }),
+      });
+      const videos =
+        v.total === 0 ? "" : v.failed ? ` Videos: ${v.saved} de ${v.total} (faltan ${v.failed}: probá “Actualizar”).` : ` Con ${v.total} videos.`;
+      setMsg({
+        error: v.failed > 0,
+        text: `“${b.setlist.nombre}” listo para usar sin internet (${b.songs.length} temas).${videos}`,
+      });
     } catch (e) {
       setMsg({ error: true, text: e instanceof ApiError ? e.message : String(e) });
     } finally {
@@ -68,6 +82,7 @@ export function Home({
     if (!confirm(`¿Borrar “${b.setlist.nombre}” del dispositivo?`)) return;
     await deleteBundle(b.setlist.id);
     await reloadLocal();
+    await pruneVideos().catch(() => {});
   }
 
   const localIds = new Set((local ?? []).map((b) => b.setlist.id));
@@ -77,7 +92,10 @@ export function Home({
     <div className="screen scroll">
       <header className="top">
         <h1>Letras en vivo</h1>
-        <button className="btn small" onClick={onSettings}>Ajustes</button>
+        <div className="row tight">
+          <button className="btn small" onClick={onCheck}>Chequeo</button>
+          <button className="btn small" onClick={onSettings}>Ajustes</button>
+        </div>
       </header>
 
       {msg && <p className={`msg ${msg.error ? "error" : ""}`}>{msg.text}</p>}

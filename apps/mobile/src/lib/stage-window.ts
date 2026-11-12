@@ -1,5 +1,6 @@
-// Abre la pantalla de escenario (letra grande) en otra ventana, ubicada en
-// el próximo monitor libre si el navegador lo permite (Chrome/Edge).
+// Abre una pantalla de escenario (letra grande) o la Pantalla de video para
+// el público en otra ventana, ubicada en el próximo monitor libre si el
+// navegador lo permite (Chrome/Edge).
 
 interface ScreenDetailed {
   availLeft: number;
@@ -15,9 +16,9 @@ interface ScreenDetails {
 
 let opened = 0;
 
-export async function openStageWindow(): Promise<string> {
-  const url = `${location.origin}/?modo=escenario`;
-  const name = `escenario-${Date.now()}`;
+export async function openStageWindow(mode: "escenario" | "video" = "escenario"): Promise<string> {
+  const url = `${location.origin}/?modo=${mode}`;
+  const name = `${mode}-${Date.now()}`;
   const getDetails = (window as unknown as { getScreenDetails?: () => Promise<ScreenDetails> })
     .getScreenDetails;
 

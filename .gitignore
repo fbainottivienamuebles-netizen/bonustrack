@@ -9,3 +9,4 @@ apps/mobile/ios
 
 .vercel
 .env*
+apps/director/videos

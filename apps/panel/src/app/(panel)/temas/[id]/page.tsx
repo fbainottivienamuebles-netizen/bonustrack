@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getSong } from "@/lib/data";
 import { SongEditor } from "../song-editor";
+import { videoStorageReady } from "@/lib/videos";
 import { DeleteSongButton } from "./delete-song-button";
 
 export default async function EditSongPage({ params }: PageProps<"/temas/[id]">) {
@@ -19,7 +20,7 @@ export default async function EditSongPage({ params }: PageProps<"/temas/[id]">)
           <DeleteSongButton id={song.id} />
         </div>
       </div>
-      <SongEditor song={song} />
+      <SongEditor song={song} videoUploadReady={videoStorageReady()} />
     </>
   );
 }

@@ -24,6 +24,9 @@ export const SECTION_LABELS: Record<SectionType, string> = {
 
 export type TempoSource = "manual" | "detectadoEnVivo";
 
+export type { ClickSound } from "./click";
+import type { ClickSound } from "./click";
+
 export interface Line {
   texto: string;
   /** Milisegundo (relativo al inicio del tema) en que la línea se resalta. */
@@ -42,8 +45,17 @@ export interface Song {
   duracionSegundos: number;
   bpmManual: number | null;
   fuenteTempo: TempoSource;
+  /** Compás, ej. "4/4"; define los clics por compás y el acento. */
+  compas: string;
+  /** Compases de cuenta previa antes de que arranque el tema (1 a 4). */
+  compasesCuenta: number;
+  sonidoClic: ClickSound;
+  /** Video de fondo en loop para la Pantalla (público). */
   videoUrl: string | null;
+  /** Tempo al que va el video, para calcular el factor de velocidad. */
   videoBpmReferencia: number | null;
+  /** Link de referencia (YouTube, Spotify…), solo para el panel. */
+  referenciaUrl: string | null;
   secciones: Section[];
   /** ISO timestamp de la última edición, para detectar cambios en la descarga. */
   updatedAt: string;

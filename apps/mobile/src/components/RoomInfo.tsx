@@ -5,7 +5,7 @@ import { useState } from "react";
 import type { LinkSnapshot, DirectorInfo } from "../lib/local-link";
 import { openStageWindow } from "../lib/stage-window";
 
-const ROLE_LABEL = { controlador: "director", seguidor: "sigue", pantalla: "pantalla" } as const;
+const ROLE_LABEL = { controlador: "director", seguidor: "sigue", pantalla: "pantalla de video" } as const;
 
 export function RoomInfo({ director, snap }: { director: DirectorInfo; snap?: LinkSnapshot | null }) {
   const [msg, setMsg] = useState<string | null>(null);
@@ -59,8 +59,15 @@ export function RoomInfo({ director, snap }: { director: DirectorInfo; snap?: Li
 
       {director.isHost && (
         <>
-          <button className="btn full" onClick={async () => setMsg(await openStageWindow())}>
-            Abrir pantalla de escenario (monitor)
+          <button className="btn full" onClick={async () => setMsg(await openStageWindow("escenario"))}>
+            Abrir pantalla de escenario (letra grande, monitor)
+          </button>
+          <button
+            className="btn full"
+            style={{ marginTop: ".5rem" }}
+            onClick={async () => setMsg(await openStageWindow("video"))}
+          >
+            Abrir pantalla de video (proyector / TV para el público)
           </button>
           {msg && <p className="muted small">{msg}</p>}
         </>

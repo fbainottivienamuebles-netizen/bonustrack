@@ -34,7 +34,12 @@ export default async function SongsPage() {
                 </div>
                 <div className="w-20 text-right font-mono text-sm tabular-nums text-muted">
                   {fmtDuration(s.duracionSegundos)}
-                  {s.bpmManual ? <div className="text-xs">{s.bpmManual} bpm</div> : null}
+                  {s.bpmManual ? (
+                    <div className="text-xs">
+                      {s.bpmManual} bpm · {s.compas}
+                    </div>
+                  ) : null}
+                  {s.tieneVideo ? <div className="text-xs">🎞 video</div> : null}
                 </div>
               </Link>
             </li>
