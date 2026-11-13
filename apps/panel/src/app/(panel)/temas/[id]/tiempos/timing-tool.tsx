@@ -288,6 +288,12 @@ export function TimingTool({ song }: { song: Song }) {
     listRef.current?.querySelector(`[data-i="${cursor}"]`)?.scrollIntoView({ block: "center", behavior: "smooth" });
   }, [cursor]);
 
+  // Mientras suena, la letra acompaña a la canción (la línea en amarillo).
+  useEffect(() => {
+    if (!playing || playingLine < 0) return;
+    listRef.current?.querySelector(`[data-i="${playingLine}"]`)?.scrollIntoView({ block: "center", behavior: "smooth" });
+  }, [playing, playingLine]);
+
   const audio = () => audioRef.current;
 
   function togglePlay() {
