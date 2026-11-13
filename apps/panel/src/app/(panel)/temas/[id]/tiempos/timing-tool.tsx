@@ -2,14 +2,16 @@
 
 // Marcar los tiempos de cada línea escuchando una grabación propia o el tema
 // en Spotify. El archivo local se reproduce desde la compu (no se sube a
-// ningún lado); de Spotify se usa su reproductor embebido. Sólo se guardan
-// los tiempos.
+// ningún lado, salvo que se use la detección automática: ahí se manda a
+// Groq para transcribirla, sin guardarla); de Spotify se usa su reproductor
+// embebido. Sólo se guardan los tiempos.
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { SECTION_LABELS, buildTimeline, formatTime, lineAt, type Song } from "@letras/shared";
 import { saveTimesAction } from "@/app/actions";
 import { fmtDuration } from "@/lib/format";
+import { alignLines, transcribe } from "@/lib/auto-timing";
 
 type Times = (number | null)[];
 type Source = "file" | "spotify";
@@ -102,13 +104,28 @@ function fillGaps(times: Times, endMs: number): number[] {
   return out as number[];
 }
 
+/** Idioma probable de la letra (ayuda a Whisper a no confundirse en la intro). */
+function guessLanguage(lines: string[]): string | undefined {
+  const es = new Set(["que", "de", "la", "el", "y", "en", "mi", "te", "no", "me", "tu", "lo", "por", "con", "se", "es", "un", "una"]);
+  const en = new Set(["the", "you", "i", "and", "to", "my", "me", "it", "in", "your", "is", "of", "on", "that", "we", "be", "don't"]);
+  let a = 0;
+  let b = 0;
+  for (const w of lines.join(" ").toLowerCase().split(/[\s,.;:!?¡¿"()]+/)) {
+    if (es.has(w)) a++;
+    if (en.has(w)) b++;
+  }
+  if (a + b < 5) return undefined;
+  return a >= b * 2 ? "es" : b >= a * 2 ? "en" : undefined;
+}
+
 export function TimingTool({ song }: { song: Song }) {
   const router = useRouter();
   const timeline = useMemo(() => buildTimeline(song.secciones), [song]);
   const audioRef = useRef<HTMLAudioElement>(null);
   const listRef = useRef<HTMLOListElement>(null);
 
-  const [fileName, setFileName] = useState<string | null>(null);
+  const [file, setFile] = useState<File | null>(null);
+  const fileName = file?.name ?? null;
   const [src, setSrc] = useState<string | null>(null);
   const [audioDur, setAudioDur] = useState<number | null>(null);
   const [playing, setPlaying] = useState(false);
@@ -132,6 +149,9 @@ export function TimingTool({ song }: { song: Song }) {
   const [status, setStatus] = useState<{ error?: boolean; text: string } | null>(null);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
+  const [detecting, setDetecting] = useState<string | null>(null);
+  /** Confianza (0 a 1) de las líneas detectadas solas; null si no hubo detección. */
+  const [auto, setAuto] = useState<(number | null)[] | null>(null);
 
   // Liberar el archivo al cambiarlo o salir.
   useEffect(() => () => void (src && URL.revokeObjectURL(src)), [src]);
@@ -304,6 +324,7 @@ export function TimingTool({ song }: { song: Song }) {
     setHistory((h) => [...h, { index: cursor, prev: times[cursor], prevCursor: cursor }]);
     setTimes((ts) => ts.map((x, i) => (i === cursor ? t : x)));
     setSelected(cursor);
+    reviewed(cursor);
     setCursor((c) => c + 1);
     setDirty(true);
     setStatus(null);
@@ -322,6 +343,7 @@ export function TimingTool({ song }: { song: Song }) {
   function nudge(deltaMs: number) {
     if (selected === null) return;
     setTimes((ts) => ts.map((x, i) => (i === selected ? Math.max(0, (x ?? filled[i]) + deltaMs) : x)));
+    reviewed(selected);
     setDirty(true);
   }
 
@@ -331,8 +353,46 @@ export function TimingTool({ song }: { song: Song }) {
     setTimes(timeline.map(() => null));
     setCursor(0);
     setSelected(null);
+    setAuto(null);
     seek(0);
     setDirty(true);
+  }
+
+  function reviewed(i: number) {
+    setAuto((a) => (a ? a.map((x, k) => (k === i ? null : x)) : a));
+  }
+
+  async function detect() {
+    if (!file || detecting) return;
+    if (markedCount > 0 && !confirm("La detección automática reemplaza los tiempos que hay ahora. ¿Seguir?")) return;
+    setStatus(null);
+    try {
+      const words = await transcribe(file, setDetecting, guessLanguage(timeline.map((l) => l.texto)));
+      setDetecting("Buscando dónde empieza cada línea…");
+      const guesses = alignLines(timeline.map((l) => l.texto), words);
+      const found = guesses.filter((g) => g.ms !== null).length;
+      if (found === 0) {
+        setStatus({ error: true, text: "No se pudo reconocer la letra en la grabación. Probá con otra grabación o marcá a mano." });
+        return;
+      }
+      setHistory([]);
+      setTimes(guesses.map((g) => g.ms));
+      setAuto(guesses.map((g) => (g.ms === null ? null : g.confidence)));
+      setCursor(Math.max(0, guesses.findIndex((g) => g.ms === null)));
+      setSelected(null);
+      setDirty(true);
+      const missing = timeline.length - found;
+      setStatus({
+        text:
+          `Listo: se detectaron ${found} de ${timeline.length} líneas.` +
+          (missing ? ` Las ${missing} en gris no se encontraron: marcalas a mano.` : "") +
+          " Revisá las marcadas con ⚠ y guardá.",
+      });
+    } catch (e) {
+      setStatus({ error: true, text: e instanceof Error ? e.message : "No se pudo analizar la grabación." });
+    } finally {
+      setDetecting(null);
+    }
   }
 
   function selectLine(i: number) {
@@ -465,7 +525,8 @@ export function TimingTool({ song }: { song: Song }) {
                 onChange={(e) => {
                   const f = e.target.files?.[0];
                   if (!f) return;
-                  setFileName(f.name);
+                  setFile(f);
+                  setAuto(null);
                   setSrc(URL.createObjectURL(f));
                   setPlaying(false);
                   setPosMs(0);
@@ -477,6 +538,24 @@ export function TimingTool({ song }: { song: Song }) {
               {fileName ?? "mp3, m4a, wav… se reproduce desde tu compu, no se sube"}
             </span>
           </div>
+          )}
+
+          {source === "file" && file && (
+            <div className="flex flex-wrap items-center gap-3 rounded-lg bg-accent/5 p-3">
+              <button className="btn-primary" onClick={(e) => { e.currentTarget.blur(); void detect(); }} disabled={!!detecting}>
+                {detecting ? "Detectando…" : "✨ Detectar tiempos automáticamente"}
+              </button>
+              <span className="min-w-0 flex-1 text-xs text-muted">
+                {detecting ??
+                  "La app escucha la grabación y busca dónde empieza cada línea. Tarda menos de un minuto; después revisás y corregís. (El audio se manda a Groq para analizarlo, no se guarda.)"}
+              </span>
+            </div>
+          )}
+
+          {source === "spotify" && (
+            <p className="text-xs text-muted">
+              La detección automática necesita una grabación en archivo: Spotify no deja que otras apps escuchen su audio.
+            </p>
           )}
 
           {source === "file" && src && (
@@ -574,7 +653,19 @@ export function TimingTool({ song }: { song: Song }) {
                   >
                     {formatTime(filled[i])}
                   </span>
-                  <span className={isPlaying ? "font-semibold" : ""}>{l.texto}</span>
+                  <span className={`flex-1 ${isPlaying ? "font-semibold" : ""}`}>{l.texto}</span>
+                  {auto?.[i] != null && (
+                    <span
+                      className={`text-xs ${auto[i]! < 0.6 ? "text-amber-600 dark:text-amber-400" : "text-muted"}`}
+                      title={
+                        auto[i]! < 0.6
+                          ? "Detectada con dudas: escuchala y corregila si hace falta"
+                          : "Detectada automáticamente"
+                      }
+                    >
+                      {auto[i]! < 0.6 ? "⚠ revisar" : "auto"}
+                    </span>
+                  )}
                 </button>
               </li>
             );
@@ -631,6 +722,7 @@ export function TimingTool({ song }: { song: Song }) {
 
         <div className="text-xs leading-relaxed text-muted">
           <p className="mb-1 font-medium text-foreground">Cómo usarlo</p>
+          Con una grabación podés apretar <b>✨ Detectar tiempos</b> y después corregir sólo las que fallen (las marcadas con ⚠). O a mano:
           Elegí la grabación (o pegá el link de Spotify), dale play y apretá <b>Espacio</b> justo cuando empieza cada línea. Si te equivocás,
           <b> Borrar</b> deshace. Hacé clic en una línea para escucharla desde 2 s antes y volver a marcarla desde
           ahí. Las líneas sin marcar (en gris) se reparten solas entre las vecinas.
